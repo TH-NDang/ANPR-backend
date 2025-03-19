@@ -79,11 +79,11 @@ def process_image(image_path, model, ocr, display=True, save_path=None):
 
 if __name__ == "__main__":
     # Khởi tạo argparse để nhận các tham số dòng lệnh
-    parser = argparse.ArgumentParser(description="Nhận diện biển số xe từ ảnh")
-    parser.add_argument("image_path", help="Đường dẫn đến ảnh cần xử lý")
+    parser = argparse.ArgumentParser(description="Nhận diện biển số xe từ ảnh hoặc thư mục")
+    parser.add_argument("path", help="Đường dẫn đến ảnh hoặc thư mục chứa ảnh cần xử lý")
     parser.add_argument("--model_path", default="best.pt", help="Đường dẫn đến file weights YOLO")
     parser.add_argument("--display", action="store_true", help="Hiển thị ảnh kết quả")
-    parser.add_argument("--save_path", default=None, help="Đường dẫn để lưu ảnh kết quả")
+    parser.add_argument("--save_path", default=None, help="Đường dẫn để lưu ảnh kết quả (chỉ khi xử lý 1 ảnh)")
     args = parser.parse_args()
 
     # Load model YOLO
@@ -96,5 +96,25 @@ if __name__ == "__main__":
     # Khởi tạo OCR system
     ocr = PaddleOCR(use_angle_cls=True, lang='en')
 
-    # Xử lý ảnh
-    process_image(args.image_path, model, ocr, args.display, args.save_path)
+    # Kiểm tra xem đường dẫn là file hay thư mục
+    if os.path.isfile(args.path):
+        # Nếu là file, xử lý trực tiếp
+        process_image(args.path, model, ocr, args.display, args.save_path)
+    elif os.path.isdir(args.path):
+        # Nếu là thư mục, duyệt qua từng file trong thư mục
+        for filename in os.listdir(args.path):
+            file_path = os.path.join(args.path, filename)
+            if os.path.isfile(file_path) and filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+                # Xử lý từng file ảnh
+                print(f"Đang xử lý ảnh: {file_path}")
+                # Tạo đường dẫn lưu ảnh riêng cho từng ảnh trong thư mục
+                if args.save_path:
+                    base_name = os.path.splitext(filename)[0]  # Lấy tên file không có đuôi mở rộng
+                    save_path = os.path.join(args.save_path, f"{base_name}_result.jpg")  # Ví dụ: output_folder/image1_result.jpg
+                else:
+                    save_path = None
+                process_image(file_path, model, ocr, args.display, save_path)
+    else:
+        print(f"Lỗi: Đường dẫn không hợp lệ: {args.path}")
+        print("Vui lòng cung cấp đường dẫn đến một file ảnh hoặc một thư mục chứa ảnh.")
+        exit()
