@@ -1,0 +1,15 @@
+fastapi==0.103.1
+uvicorn[standard]==0.23.2
+python-multipart==0.0.6
+opencv-python-headless==4.8.0.76
+numpy==1.24.3
+torch==2.0.1
+ultralytics==8.0.196
+paddlepaddle==2.5.0
+paddleocr==2.7.0.3
+Pillow==10.0.0
+python-dotenv==1.0.0
+pydantic==2.3.0
+pydantic-settings==2.0.3
+# Tùy chọn: Bỏ ghi chú dòng dưới đây nếu muốn dùng Loki cho logging
+python-logging-loki==0.3.1 
