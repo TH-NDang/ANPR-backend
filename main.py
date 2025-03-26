@@ -1,7 +1,7 @@
 # main.py - API nhận dạng biển số xe
 import asyncio
 import re
-from fastapi import FastAPI, File, UploadFile, HTTPException, Request
+from fastapi import FastAPI, File, UploadFile, HTTPException, Request, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from concurrent.futures import ThreadPoolExecutor
@@ -9,14 +9,19 @@ import numpy as np
 import cv2
 import os
 from typing import List, Optional, Tuple, Dict, Any
+from pydantic import BaseModel, Field, HttpUrl
 
 # Import các module cần thiết
 from ultralytics import YOLO
 from paddleocr import PaddleOCR
 from config import settings, logger
 from schemas import ProcessImageResponse, DetectionResult, PlateAnalysisResult, ErrorResponse
-from image_utils import decode_image, encode_image_to_base64
+from image_utils import decode_image, encode_image_to_base64, download_image_from_url
 from analysis import analyze_license_plate
+
+# Schema cho xử lý URL
+class ImageUrlRequest(BaseModel):
+    url: HttpUrl = Field(..., description="URL của ảnh cần xử lý")
 
 # Khởi tạo model
 model_path = "best.pt"
@@ -147,35 +152,13 @@ def process_plate_text(ocr_text: str, plate_image: Optional[np.ndarray] = None) 
             "format_description": None
         }
 
-@app.post("/process-image",
-          response_model=ProcessImageResponse,
-          responses={
-              400: {"model": ErrorResponse, "description": "Yêu cầu không hợp lệ"},
-              422: {"model": ErrorResponse, "description": "File không hợp lệ hoặc không phải ảnh"},
-              500: {"model": ErrorResponse, "description": "Lỗi máy chủ nội bộ"}
-          })
-async def process_image_endpoint(file: UploadFile = File(...)):
+async def process_image_for_detection(image_np: np.ndarray) -> ProcessImageResponse:
     """
-    Endpoint nhận ảnh và trả về kết quả nhận dạng biển số.
+    Hàm chung để xử lý ảnh dùng cho cả file upload và URL image.
     """
-    # Kiểm tra loại file
-    if not file.content_type or not file.content_type.startswith('image/'):
-        logger.warning(f"Loại file không hợp lệ: {file.content_type}")
-        raise HTTPException(status_code=415, detail=f"Loại file không được hỗ trợ. Chỉ chấp nhận file ảnh.")
-
-    # Đọc và decode ảnh
-    contents = await file.read()
-    # Giới hạn kích thước file (10MB)
-    MAX_FILE_SIZE = 10 * 1024 * 1024
-    if len(contents) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=413, detail=f"Kích thước file quá lớn (tối đa {MAX_FILE_SIZE // 1024 // 1024}MB).")
-
-    image_np = decode_image(contents)
     if image_np is None:
         raise HTTPException(status_code=422, detail="Không thể đọc hoặc giải mã file ảnh.")
-
-    logger.info(f"Đã nhận và decode ảnh thành công, kích thước: {image_np.shape}")
-
+        
     # Chạy phát hiện biển số (YOLO)
     detections_yolo = await run_detection(image_np)
 
@@ -230,6 +213,56 @@ async def process_image_endpoint(file: UploadFile = File(...)):
 
     logger.info(f"Hoàn thành xử lý. {len(all_results)} biển số được xử lý.")
     return ProcessImageResponse(detections=all_results, processed_image_url=encoded_image_url)
+
+@app.post("/process-image",
+          response_model=ProcessImageResponse,
+          responses={
+              400: {"model": ErrorResponse, "description": "Yêu cầu không hợp lệ"},
+              422: {"model": ErrorResponse, "description": "File không hợp lệ hoặc không phải ảnh"},
+              500: {"model": ErrorResponse, "description": "Lỗi máy chủ nội bộ"}
+          })
+async def process_image_endpoint(file: UploadFile = File(...)):
+    """
+    Endpoint nhận ảnh và trả về kết quả nhận dạng biển số.
+    """
+    # Kiểm tra loại file
+    if not file.content_type or not file.content_type.startswith('image/'):
+        logger.warning(f"Loại file không hợp lệ: {file.content_type}")
+        raise HTTPException(status_code=415, detail=f"Loại file không được hỗ trợ. Chỉ chấp nhận file ảnh.")
+
+    # Đọc và decode ảnh
+    contents = await file.read()
+    # Giới hạn kích thước file (10MB)
+    MAX_FILE_SIZE = 10 * 1024 * 1024
+    if len(contents) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail=f"Kích thước file quá lớn (tối đa {MAX_FILE_SIZE // 1024 // 1024}MB).")
+
+    image_np = decode_image(contents)
+    logger.info(f"Đã nhận và decode ảnh thành công, kích thước: {image_np.shape}")
+    
+    return await process_image_for_detection(image_np)
+
+@app.post("/process-image-url",
+          response_model=ProcessImageResponse,
+          responses={
+              400: {"model": ErrorResponse, "description": "Yêu cầu không hợp lệ"},
+              422: {"model": ErrorResponse, "description": "URL không hợp lệ hoặc không phải ảnh"},
+              500: {"model": ErrorResponse, "description": "Lỗi máy chủ nội bộ"}
+          })
+async def process_image_url_endpoint(request: ImageUrlRequest):
+    """
+    Endpoint nhận URL hình ảnh và trả về kết quả nhận dạng biển số.
+    """
+    logger.info(f"Đã nhận yêu cầu xử lý ảnh từ URL: {request.url}")
+    
+    # Tải ảnh từ URL
+    image_np = download_image_from_url(str(request.url))
+    if image_np is None:
+        raise HTTPException(status_code=422, detail="Không thể tải hoặc xử lý ảnh từ URL cung cấp.")
+    
+    logger.info(f"Đã tải ảnh từ URL thành công, kích thước: {image_np.shape}")
+    
+    return await process_image_for_detection(image_np)
 
 if __name__ == "__main__":
     import uvicorn

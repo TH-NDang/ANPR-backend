@@ -5,6 +5,36 @@ import base64
 from typing import Optional, List, Tuple
 from config import logger, settings
 from constants import COLOR_RANGES_HSV
+import requests
+
+def download_image_from_url(url: str) -> Optional[np.ndarray]:
+    """
+    Tải ảnh từ URL internet và chuyển thành mảng numpy.
+
+    Args:
+        url: URL của ảnh cần tải.
+
+    Returns:
+        Mảng numpy chứa ảnh hoặc None nếu có lỗi.
+    """
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()  # Kiểm tra lỗi HTTP
+
+        # Chuyển bytes thành ảnh numpy
+        image = decode_image(response.content)
+
+        if image is None:
+            logger.error(f"Không thể decode dữ liệu ảnh từ URL: {url}")
+            return None
+
+        return image
+    except requests.RequestException as e:
+        logger.error(f"Lỗi khi tải ảnh từ URL {url}: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Lỗi không xác định khi xử lý ảnh từ URL {url}: {e}")
+        return None
 
 def decode_image(contents: bytes) -> Optional[np.ndarray]:
     """Đọc dữ liệu byte của ảnh và chuyển thành mảng numpy."""
@@ -65,13 +95,13 @@ def deskew(image: np.ndarray) -> np.ndarray:
     try:
         # Tìm các cạnh trong ảnh
         edges = auto_canny(image)
-        
+
         # Tìm các đường thẳng bằng Hough transform
         lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=100, minLineLength=100, maxLineGap=10)
-        
+
         if lines is None or len(lines) == 0:
             return image  # Không tìm thấy đường thẳng nào
-        
+
         # Tính góc nghiêng trung bình
         angles = []
         for line in lines:
@@ -82,23 +112,23 @@ def deskew(image: np.ndarray) -> np.ndarray:
             # Chỉ quan tâm đến các đường gần như ngang
             if abs(angle) < 45:
                 angles.append(angle)
-        
+
         if not angles:
             return image  # Không tìm thấy góc nghiêng phù hợp
-        
+
         # Tính góc nghiêng trung bình
         angle = np.median(angles)
-        
+
         # Lấy kích thước ảnh
         h, w = image.shape[:2]
         center = (w // 2, h // 2)
-        
+
         # Tạo ma trận xoay
         M = cv2.getRotationMatrix2D(center, angle, 1.0)
-        
+
         # Áp dụng xoay cho ảnh
         rotated = cv2.warpAffine(image, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
-        
+
         return rotated
     except Exception as e:
         logger.warning(f"Lỗi khi deskew ảnh: {e}")
@@ -107,33 +137,33 @@ def deskew(image: np.ndarray) -> np.ndarray:
 def try_multiple_thresholds(gray_image: np.ndarray) -> List[np.ndarray]:
     """Thử nghiệm nhiều phương pháp threshold khác nhau và trả về danh sách kết quả."""
     results = []
-    
+
     # 1. Global binary threshold with Otsu's method
     _, otsu = cv2.threshold(gray_image, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     results.append(otsu)
-    
+
     # 2. Global binary threshold
     _, binary = cv2.threshold(gray_image, 127, 255, cv2.THRESH_BINARY_INV)
     results.append(binary)
-    
+
     # 3. Adaptive Gaussian Threshold - normal
     adaptive1 = cv2.adaptiveThreshold(
         gray_image, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
         cv2.THRESH_BINARY, 11, 2
     )
     results.append(adaptive1)
-    
+
     # 4. Adaptive Gaussian Threshold - inverted
     adaptive2 = cv2.adaptiveThreshold(
         gray_image, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
         cv2.THRESH_BINARY_INV, 11, 2
     )
     results.append(adaptive2)
-    
+
     # 5. Tạo ảnh đảo ngược (nếu cần thêm kỹ thuật)
     inverted = cv2.bitwise_not(gray_image)
     results.append(inverted)
-    
+
     return results
 
 def preprocess_plate_for_ocr(plate_image: np.ndarray) -> np.ndarray:
@@ -151,7 +181,7 @@ def preprocess_plate_for_ocr(plate_image: np.ndarray) -> np.ndarray:
     # Lưu bản sao của ảnh gốc để so sánh
     original = plate_image.copy()
     processed_versions = []
-    
+
     # --- Version 1: Xử lý cơ bản ---
     try:
         # Resize ảnh nếu quá nhỏ
@@ -162,23 +192,23 @@ def preprocess_plate_for_ocr(plate_image: np.ndarray) -> np.ndarray:
             resized = cv2.resize(original, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_CUBIC)
         else:
             resized = original.copy()
-        
+
         # Chuyển sang ảnh xám
         gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
-        
+
         # Tăng độ tương phản
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         contrast_enhanced = clahe.apply(gray)
-        
+
         # Làm mờ nhẹ để giảm nhiễu
         blurred = cv2.GaussianBlur(contrast_enhanced, (3, 3), 0)
-        
+
         # Áp dụng nhiều phương pháp threshold khác nhau
         threshold_versions = try_multiple_thresholds(blurred)
-        
+
         # Thêm các phiên bản xử lý vào danh sách
         processed_versions.extend(threshold_versions)
-        
+
         # Áp dụng kỹ thuật deskew cho từng phiên bản
         deskewed_versions = [deskew(img) for img in threshold_versions]
         processed_versions.extend(deskewed_versions)
