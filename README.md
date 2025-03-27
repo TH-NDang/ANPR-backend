@@ -58,23 +58,6 @@ API_PORT=5000
 LOG_LEVEL=info
 ```
 
-## Sử dụng
-
-1. Khởi động API server:
-```bash
-uvicorn main:app --host 0.0.0.0 --port 5000 --reload
-```
-
-2. Truy cập tài liệu API (Swagger UI):
-```
-http://localhost:5000/docs
-```
-
-3. Gửi yêu cầu nhận dạng biển số:
-```bash
-curl -X POST "http://localhost:5000/process-image" -H "accept: application/json" -H "Content-Type: multipart/form-data" -F "file=@path/to/your/image.jpg"
-```
-
 ## Cấu trúc dự án
 
 ```
@@ -130,13 +113,3 @@ Upload ảnh và nhận dạng biển số xe.
   "processed_image_url": "data:image/jpeg;base64,..."
 }
 ```
-
-## Lưu ý
-
-- Cần cài đặt model YOLO đã được huấn luyện cho biển số xe
-- Có thể cần điều chỉnh các tham số cho phù hợp với biển số của từng quốc gia/khu vực
-- Nếu không có GPU, tốc độ xử lý sẽ bị ảnh hưởng đáng kể
-
-## License
-
-[MIT License](LICENSE) 
