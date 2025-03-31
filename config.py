@@ -3,6 +3,7 @@ import os
 import torch
 from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
+from typing import Optional
 
 load_dotenv() # Tải biến môi trường từ file .env (nếu có)
 
@@ -37,7 +38,13 @@ class Settings(BaseSettings):
     # API Settings
     api_host: str = os.getenv("API_HOST", "0.0.0.0")
     api_port: int = int(os.getenv("API_PORT", 5000))
-    log_level: str = os.getenv("LOG_LEVEL", "info")
+    log_level: str = os.getenv("LOG_LEVEL", "debug")
+
+    # OpenAI Settings
+    openai_api_key: Optional[str] = os.getenv("OPENAI_API_KEY")
+    openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    # Bật/tắt fallback OpenAI
+    enable_openai_fallback: bool = bool(os.getenv("ENABLE_OPENAI_FALLBACK", True))
 
     # Torch settings
     torch_weights_only: bool = False # Giữ False để load model custom
@@ -80,4 +87,7 @@ logger.info(f"YOLO Confidence Threshold: {settings.yolo_conf_threshold}")
 logger.info(f"Enable OCR Preprocessing: {settings.enable_ocr_preprocessing}")
 logger.info(f"Enable Multiple OCR Methods: {settings.enable_multiple_ocr_methods}")
 logger.info(f"PaddleOCR Language: {settings.paddle_language}")
-logger.info(f"PaddleOCR GPU Enabled: {settings.paddle_use_gpu}") 
+logger.info(f"PaddleOCR GPU Enabled: {settings.paddle_use_gpu}")
+logger.info(f"OpenAI API Key Provided: {'Yes' if settings.openai_api_key else 'No'}")
+logger.info(f"OpenAI Model: {settings.openai_model}")
+logger.info(f"OpenAI Fallback Enabled: {settings.enable_openai_fallback}") 

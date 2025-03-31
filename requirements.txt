@@ -13,4 +13,5 @@ pydantic
 pydantic-settings
 # Tùy chọn: Bỏ ghi chú dòng dưới đây nếu muốn dùng Loki cho logging
 python-logging-loki
-requests 
+requests
+openai 
