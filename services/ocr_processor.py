@@ -190,14 +190,6 @@ async def get_ocr_result(
             f"Kết quả PaddleOCR ('{paddle_ocr_text}') không hợp lệ/đáng ngờ. Thử fallback với OpenAI..."
         )
         openai_ocr_text = await _run_openai_ocr(plate_crop, executor)
-
-        if openai_ocr_text:
-            logger.info(
-                f"Đã nhận kết quả từ OpenAI: '{openai_ocr_text}'. Sẽ sử dụng kết quả này."
-            )
-            return openai_ocr_text, "openai"  # Trả về kết quả OpenAI
-        else:
-            logger.info("OpenAI không trả về kết quả text. Giữ kết quả gốc PaddleOCR.")
-            return paddle_ocr_text, "paddleocr"  # Giữ kết quả Paddle
+        return openai_ocr_text, "openai"
     else:
         return paddle_ocr_text, "paddleocr"

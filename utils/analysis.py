@@ -5,7 +5,7 @@ from typing import Optional
 from schemas import PlateAnalysisResult
 from constants import PROVINCE_CODES, PLATE_TYPES
 from config import logger
-from image_utils import get_plate_color
+from .image_utils import get_plate_color
 
 
 def analyze_license_plate(
