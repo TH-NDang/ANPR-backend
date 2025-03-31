@@ -17,11 +17,10 @@ from schemas import (
 )
 
 # Import các processor và utils
-from detection_processor import run_detection
-from ocr_processor import get_ocr_result
-from image_utils import decode_image, encode_image_to_base64, download_image_from_url
-from analysis import analyze_license_plate
-
+from services.detection_processor import run_detection
+from services.ocr_processor import get_ocr_result
+from utils.image_utils import decode_image, encode_image_to_base64, download_image_from_url
+from utils.analysis import analyze_license_plate
 
 # Lấy logger cho module main
 logger = logging.getLogger(__name__)

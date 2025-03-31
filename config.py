@@ -9,8 +9,8 @@ load_dotenv() # Tải biến môi trường từ file .env (nếu có)
 
 class Settings(BaseSettings):
     # Đường dẫn tới model YOLO (ưu tiên biến môi trường)
-    yolo_model_path: str = os.getenv("YOLO_MODEL_PATH", "best.pt")
-    yolo_fallback_model: str = "yolov11n.pt" # Model dùng nếu best.pt không tồn tại
+    yolo_model_path: str = os.getenv("YOLO_MODEL_PATH", "models/best.pt")
+    yolo_fallback_model: str = "models/yolov11n.pt"  # Model dùng nếu best.pt không tồn tại
 
     # Ngưỡng tin cậy cho việc phát hiện biển số của YOLO
     yolo_conf_threshold: float = float(os.getenv("YOLO_CONF_THRESHOLD", 0.4))

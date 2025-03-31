@@ -1,8 +1,6 @@
 # schemas.py
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, HttpUrl
 from typing import List, Optional, Tuple
-from pydantic import HttpUrl
-
 
 class PlateAnalysisResult(BaseModel):
     original: str = Field(..., description="Biển số gốc đọc được từ OCR")
