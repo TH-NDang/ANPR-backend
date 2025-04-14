@@ -2,6 +2,7 @@
 from pydantic import BaseModel, Field, HttpUrl
 from typing import List, Optional, Tuple
 
+
 class PlateAnalysisResult(BaseModel):
     original: str = Field(..., description="Biển số gốc đọc được từ OCR")
     normalized: str = Field(
@@ -58,6 +59,9 @@ class ProcessImageResponse(BaseModel):
     processed_image_url: Optional[str] = Field(
         None,
         description="URL Data của ảnh đã xử lý với các hộp giới hạn (Base64 encoded)",
+    )
+    processing_time_ms: Optional[float] = Field(
+        None, description="Thời gian xử lý yêu cầu phía backend (miligiây)"
     )
     error: Optional[str] = Field(None, description="Thông báo lỗi nếu có")
 

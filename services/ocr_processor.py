@@ -77,11 +77,19 @@ async def _run_paddle_ocr(plate_crop: np.ndarray, executor: ThreadPoolExecutor) 
         return ""
 
 
-async def _run_openai_ocr(plate_crop: np.ndarray, executor: ThreadPoolExecutor) -> str:
-    """Thực hiện OpenAI OCR trong executor."""
+async def _run_openai_ocr(
+    plate_crop: np.ndarray,
+    executor: ThreadPoolExecutor,
+    full_image: Optional[np.ndarray] = None,
+    bbox: Optional[Tuple[int, int, int, int]] = None,
+) -> str:
+    """Thực hiện OpenAI OCR trong executor, ưu tiên full_image nếu được cung cấp."""
     if openai_client is None:
         return ""
-    if plate_crop is None or plate_crop.size == 0:
+
+    image_to_encode = full_image if full_image is not None else plate_crop
+    if image_to_encode is None or image_to_encode.size == 0:
+        logger.warning("Image to encode for OpenAI is empty or None.")
         return ""
 
     loop = asyncio.get_running_loop()
@@ -91,18 +99,29 @@ async def _run_openai_ocr(plate_crop: np.ndarray, executor: ThreadPoolExecutor) 
             _, buffer = cv2.imencode(".jpg", image_array)
             return base64.b64encode(buffer).decode("utf-8")
 
-        base64_image = await loop.run_in_executor(executor, encode_image, plate_crop)
+        base64_image = await loop.run_in_executor(
+            executor, encode_image, image_to_encode
+        )
 
         prompt = (
             "You are an expert OCR specialized in Vietnamese vehicle license plates. "
             "Extract ONLY the license plate text from the image. "
-            "Focus on Vietnamese formats like XX-YZ.ZZZZ, XX-YZZ.ZZ, XXYZ.ZZZZZ, XX-Y ZZZ.ZZ (X=digit, Y=letter, Z=digit/letter). "
+            "Focus on Vietnamese formats like XX-YZ.ZZZZ, XX-YZZ.ZZ, XXYZ.ZZZZZ, XX-Y ZZZ.ZZ. "
+        )
+        if full_image is not None and bbox:
+            prompt += f"The approximate bounding box of the plate within the full image is [x1={bbox[0]}, y1={bbox[1]}, x2={bbox[2]}, y2={bbox[3]}]. Focus your analysis there. "
+        else:
+            prompt += (
+                "The provided image is likely a close-up crop of the license plate. "
+            )
+
+        prompt += (
             "Respond only with the extracted text, no extra formatting or explanations. "
             "If text cannot be extracted, respond with 'None'."
         )
 
         logger.info(
-            f"Gửi ảnh (kích thước: {plate_crop.shape}) đến OpenAI model: {settings.openai_model}"
+            f"Sending image (shape: {image_to_encode.shape}, source: {'full' if full_image is not None else 'crop'}) to OpenAI model: {settings.openai_model}"
         )
         response = await openai_client.chat.completions.create(
             model=settings.openai_model,
@@ -158,10 +177,22 @@ def _is_potentially_valid(ocr_text: str) -> bool:
 
 
 async def get_ocr_result(
-    plate_crop: np.ndarray, executor: ThreadPoolExecutor
+    plate_crop: np.ndarray,
+    executor: ThreadPoolExecutor,
+    full_image: Optional[np.ndarray] = None,
+    bbox: Optional[Tuple[int, int, int, int]] = None,
 ) -> Tuple[str, str]:
     """
     Lấy kết quả OCR tốt nhất, xử lý fallback nếu cần.
+
+    Args:
+        plate_crop: The cropped image of the license plate.
+        executor: ThreadPoolExecutor for running tasks.
+        full_image: The original full image (optional, used for OpenAI fallback).
+        bbox: The bounding box coordinates on the full_image (optional).
+
+    Returns:
+        A tuple containing the final OCR text and the engine used ('paddleocr' or 'openai').
     """
     engine_used = "paddleocr"  # Mặc định
     paddle_ocr_text = await _run_paddle_ocr(plate_crop, executor)
@@ -189,7 +220,12 @@ async def get_ocr_result(
         logger.info(
             f"Kết quả PaddleOCR ('{paddle_ocr_text}') không hợp lệ/đáng ngờ. Thử fallback với OpenAI..."
         )
-        openai_ocr_text = await _run_openai_ocr(plate_crop, executor)
+        # Pass full_image and bbox to OpenAI OCR function
+        openai_ocr_text = await _run_openai_ocr(
+            plate_crop, executor, full_image=full_image, bbox=bbox
+        )
+        # Even if OpenAI fails, we return its (empty) result and 'openai' engine
+        # This prevents returning the known bad Paddle result.
         return openai_ocr_text, "openai"
     else:
         return paddle_ocr_text, "paddleocr"

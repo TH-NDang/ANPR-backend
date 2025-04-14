@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import cv2
 import logging
+import time  # Import time module
 
 # Import config và schemas
 from config import settings
@@ -19,7 +20,11 @@ from schemas import (
 # Import các processor và utils
 from services.detection_processor import run_detection
 from services.ocr_processor import get_ocr_result
-from utils.image_utils import decode_image, encode_image_to_base64, download_image_from_url
+from utils.image_utils import (
+    decode_image,
+    encode_image_to_base64,
+    download_image_from_url,
+)
 from utils.analysis import analyze_license_plate
 
 # Lấy logger cho module main
@@ -75,6 +80,8 @@ async def process_image_for_detection(
         image_np: Ảnh đầu vào dạng NumPy array.
         source: Nguồn gốc của ảnh ('file' hoặc 'url').
     """
+    start_time = time.perf_counter()  # Start timer
+
     if image_np is None:
         raise HTTPException(
             status_code=422, detail="Không thể đọc hoặc giải mã file ảnh."
@@ -96,47 +103,49 @@ async def process_image_for_detection(
         if not detections_yolo:
             logger.info(f"[{source}] Không phát hiện được biển số nào.")
             encoded_image = encode_image_to_base64(processed_image_np)
+            processing_time_ms = (
+                time.perf_counter() - start_time
+            ) * 1000  # Calculate time
             return ProcessImageResponse(
                 detections=[],
                 processed_image_url=encoded_image,
-                error="Không phát hiện được biển số.",
+                error="No license plates detected.",
+                processing_time_ms=processing_time_ms,
             )
 
-        # 2. Xử lý từng detection
-
-        # Xử lý từng biển số phát hiện được
+        # 2. Process each detected plate
         for i, (bbox, conf) in enumerate(detections_yolo):
-            # *** Thêm log ERROR để kiểm tra luồng ***
-            logger.error(
-                f"[{source}] >>> ĐANG Ở ĐẦU VÒNG LẶP XỬ LÝ DETECTION {i+1} <<<"
-            )
-            # *** Thêm log bắt đầu vòng lặp ***
-            logger.debug(f"[{source}] --- Bắt đầu xử lý detection {i+1} ---")
-
-            logger.info(f"[{source}] Xử lý detection {i+1}/{len(detections_yolo)}")
+            logger.debug(f"[{source}] --- Starting processing detection {i+1} ---")
+            logger.info(f"[{source}] Processing detection {i+1}/{len(detections_yolo)}")
             x1, y1, x2, y2 = bbox
+            logger.warning(f"[{source}] Bounding box: ({x1}, {y1}, {x2}, {y2})")
 
-            logger.warning(
-                f"[{source}] Bounding box: ({x1}, {y1}, {x2}, {y2})"
-            )  # Giữ lại log bbox này
-
-            # Đảm bảo tọa độ nằm trong giới hạn của ảnh
+            # Ensure coordinates are within image bounds
             x1, y1 = max(0, x1), max(0, y1)
             x2, y2 = min(image_np.shape[1], x2), min(image_np.shape[0], y2)
 
             if x1 >= x2 or y1 >= y2:
+                logger.warning(
+                    f"[{source}] Skipping detection {i+1} due to invalid bbox after clamping."
+                )
                 continue
             plate_crop = image_np[y1:y2, x1:x2]
             if plate_crop.size == 0:
+                logger.warning(
+                    f"[{source}] Skipping detection {i+1} due to empty crop."
+                )
                 continue
 
-            # 3. Lấy kết quả OCR (đã bao gồm fallback)
-            final_ocr_text, engine_used = await get_ocr_result(plate_crop, executor)
+            # 3. Get OCR result (includes fallback logic)
+            # Pass the full image and bbox for potential OpenAI use
+            final_ocr_text, engine_used = await get_ocr_result(
+                plate_crop, executor, full_image=image_np, bbox=bbox
+            )
             logger.info(
-                f"[{source}] Kết quả OCR cuối cùng cho detection {i+1}: '{final_ocr_text}' (Engine: {engine_used})"
+                f"[{source}] Final OCR result for detection {i+1}: '{final_ocr_text}' (Engine: {engine_used})"
             )
 
-            # 4. Phân tích kết quả OCR cuối cùng (Gọi trực tiếp analyze_license_plate)
+            # 4. Analyze final OCR result
             try:
                 logger.debug(
                     f"[{source}] Chuẩn bị gọi analyze_license_plate với text: '{final_ocr_text}'"
@@ -150,13 +159,10 @@ async def process_image_for_detection(
                     f"[{source}] Lỗi khi phân tích biển số cuối cùng cho detection {i+1}: {e}",
                     exc_info=True,
                 )
-                # Tạo kết quả analysis rỗng/mặc định nếu lỗi
                 final_analysis = PlateAnalysisResult(original=final_ocr_text or "N/A")
 
-            # Vẽ kết quả lên ảnh
-            draw_text = (
-                final_ocr_text if final_ocr_text else "N/A"
-            )  # Text để vẽ lên ảnh
+            # Draw result on the image
+            draw_text = final_ocr_text if final_ocr_text else "N/A"
             cv2.rectangle(
                 processed_image_np,
                 (x1, y1),
@@ -176,21 +182,26 @@ async def process_image_for_detection(
 
             # Tạo kết quả detection cuối cùng
             detection_entry = DetectionResult(
-                plate_number=final_ocr_text or "Không đọc được",
+                plate_number=final_ocr_text or "Cannot read",
                 confidence_detection=conf,
                 bounding_box=(x1, y1, x2, y2),
                 plate_analysis=final_analysis,
                 ocr_engine_used=engine_used,
             )
             all_results.append(detection_entry)
-            logger.debug(f"[{source}] --- Kết thúc xử lý detection {i+1} ---")
+            logger.debug(f"[{source}] --- Finished processing detection {i+1} ---")
 
-    # Encode ảnh kết quả sang base64
+    # Encode result image to base64
     encoded_image_url = encode_image_to_base64(processed_image_np)
 
-    logger.info(f"[{source}] Hoàn thành xử lý. {len(all_results)} biển số được xử lý.")
+    processing_time_ms = (time.perf_counter() - start_time) * 1000  # Calculate time
+    logger.info(
+        f"[{source}] Processing complete. {len(all_results)} plates processed in {processing_time_ms:.2f} ms."
+    )
     return ProcessImageResponse(
-        detections=all_results, processed_image_url=encoded_image_url
+        detections=all_results,
+        processed_image_url=encoded_image_url,
+        processing_time_ms=processing_time_ms,
     )
 
 
@@ -208,19 +219,19 @@ async def process_image_for_detection(
 )
 async def process_image_endpoint(file: UploadFile = File(...)):
     """
-    Endpoint nhận ảnh và trả về kết quả nhận dạng biển số.
+    Endpoint receives an image and returns license plate recognition results.
     """
-    # Kiểm tra loại file
+    start_time = time.perf_counter()  # Start timer for the endpoint
+    # Check file type
     if not file.content_type or not file.content_type.startswith("image/"):
-        logger.warning(f"Loại file không hợp lệ: {file.content_type}")
+        logger.warning(f"Invalid file type: {file.content_type}")
         raise HTTPException(
             status_code=415,
-            detail=f"Loại file không được hỗ trợ. Chỉ chấp nhận file ảnh.",
+            detail="Unsupported file type. Only image files are accepted.",
         )
 
-    # Đọc và decode ảnh
+    # Read and decode image
     contents = await file.read()
-    # Giới hạn kích thước file (10MB)
     MAX_FILE_SIZE = 10 * 1024 * 1024
     if len(contents) > MAX_FILE_SIZE:
         raise HTTPException(
@@ -233,8 +244,14 @@ async def process_image_endpoint(file: UploadFile = File(...)):
         f"[file] Đã nhận và decode ảnh thành công, kích thước: {image_np.shape if image_np is not None else 'None'}"
     )
 
-    # Truyền source='file' vào hàm xử lý
-    return await process_image_for_detection(image_np, source="file")
+    # Call the processing function
+    response = await process_image_for_detection(image_np, source="file")
+
+    # Add endpoint processing time if not already set by the core function (e.g., if error occurred early)
+    if response.processing_time_ms is None:
+        response.processing_time_ms = (time.perf_counter() - start_time) * 1000
+
+    return response
 
 
 @app.post(
@@ -251,31 +268,40 @@ async def process_image_endpoint(file: UploadFile = File(...)):
 )
 async def process_image_url_endpoint(request: ImageUrlRequest):
     """
-    Endpoint nhận URL hình ảnh và trả về kết quả nhận dạng biển số.
+    Endpoint receives an image URL and returns license plate recognition results.
     """
-    logger.info(f"[url] Đã nhận yêu cầu xử lý ảnh từ URL: {request.url}")
-
-    # Tải ảnh từ URL
-    image_np = download_image_from_url(str(request.url))
-    if image_np is None:
+    start_time = time.perf_counter()  # Start timer for the endpoint
+    try:
+        image_np = await download_image_from_url(str(request.url))
+        logger.info(
+            f"[url] Downloaded and decoded image from URL successfully, shape: {image_np.shape if image_np is not None else 'None'}"
+        )
+    except Exception as e:
+        logger.error(
+            f"[url] Error downloading or decoding image from URL: {e}", exc_info=True
+        )
         raise HTTPException(
-            status_code=422, detail="Không thể tải hoặc xử lý ảnh từ URL cung cấp."
+            status_code=422, detail=f"Failed to process image from URL: {e}"
         )
 
-    logger.info(f"[url] Đã tải ảnh từ URL thành công, kích thước: {image_np.shape}")
+    # Call the processing function
+    response = await process_image_for_detection(image_np, source="url")
 
-    # Truyền source='url' vào hàm xử lý
-    return await process_image_for_detection(image_np, source="url")
+    # Add endpoint processing time if not already set
+    if response.processing_time_ms is None:
+        response.processing_time_ms = (time.perf_counter() - start_time) * 1000
+
+    return response
 
 
-# Thêm endpoint kiểm tra trạng thái
 @app.get("/health")
 async def health_check():
-    return {
-        "status": "ok",
-        "openai_enabled": settings.enable_openai_fallback
-        and bool(settings.openai_api_key),
-    }
+    """Simple health check endpoint."""
+    # Basic check: Can we access settings?
+    if settings.app_name:
+        return {"status": "ok", "app_name": settings.app_name}
+    else:
+        raise HTTPException(status_code=503, detail="Service configuration missing")
 
 
 if __name__ == "__main__":
