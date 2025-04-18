@@ -7,11 +7,15 @@ torch
 ultralytics
 paddlepaddle
 paddleocr
+pyclipper
+shapely
+scikit-image
+imgaug
+google-generativeai
 Pillow
 python-dotenv
 pydantic
 pydantic-settings
-# Tùy chọn: Bỏ ghi chú dòng dưới đây nếu muốn dùng Loki cho logging
 python-logging-loki
 requests
-openai 
+openai

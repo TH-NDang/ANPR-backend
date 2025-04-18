@@ -2,7 +2,6 @@
 import cv2
 import numpy as np
 
-# Dữ liệu biển số tỉnh/thành phố (Giữ nguyên từ code gốc, kiểm tra lại tính chính xác)
 PROVINCE_CODES = {
     "11": "Cao Bằng",
     "12": "Lạng Sơn",
@@ -31,9 +30,9 @@ PROVINCE_CODES = {
     "36": "Thanh Hóa",
     "37": "Nghệ An",
     "38": "Hà Tĩnh",
-    "39": "Đồng Nai",  # Mã 39 Đồng Nai là cũ, hiện chủ yếu 60
+    "39": "Đồng Nai",
     "40": "Hà Nội",
-    "41": "TP. Hồ Chí Minh",  # Mã 41 TP.HCM là cũ, hiện chủ yếu 5x
+    "41": "TP. Hồ Chí Minh",
     "43": "TP. Đà Nẵng",
     "47": "Đắk Lắk",
     "48": "Đắk Nông",
@@ -87,7 +86,6 @@ PROVINCE_CODES = {
     "99": "Bắc Ninh",
 }
 
-# Phân loại loại biển số dựa trên màu sắc và ký tự đặc biệt
 PLATE_TYPES = {
     "personal": {"name": "Xe cá nhân", "description": "Biển trắng, chữ đen"},
     "commercial": {
@@ -127,16 +125,14 @@ PLATE_TYPES = {
     "unknown": {"name": "Không xác định", "description": "Không thể phân loại"},
 }
 
-# Dải màu HSV gần đúng cho việc phân loại màu nền biển số
 COLOR_RANGES_HSV = {
-    "white": ([0, 0, 150], [180, 50, 255]),  # Trắng/Xám sáng
-    "yellow": ([20, 100, 100], [30, 255, 255]),  # Vàng
-    "blue": ([90, 80, 50], [130, 255, 255]),  # Xanh dương
-    "red1": ([0, 70, 50], [10, 255, 255]),  # Đỏ (phần 1)
-    "red2": ([170, 70, 50], [180, 255, 255]),  # Đỏ (phần 2)
+    "white": ([0, 0, 150], [180, 50, 255]),
+    "yellow": ([20, 100, 100], [30, 255, 255]),
+    "blue": ([90, 80, 50], [130, 255, 255]),
+    "red1": ([0, 70, 50], [10, 255, 255]),
+    "red2": ([170, 70, 50], [180, 255, 255]),
 }
 
-# Ký tự có thể bị OCR nhầm lẫn và cách sửa (Sử dụng trong hậu xử lý)
 OCR_CORRECTION_MAP = {
     "O": "0",
     "Q": "0",

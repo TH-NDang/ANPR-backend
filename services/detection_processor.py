@@ -5,10 +5,8 @@ from typing import List, Tuple
 from concurrent.futures import ThreadPoolExecutor
 from ultralytics import YOLO
 
-# Import các thành phần cần thiết từ config
 from config import settings, logger
 
-# Khởi tạo model YOLO một lần khi module được load
 model_path = settings.yolo_model_path
 if not os.path.exists(model_path):
     logger.warning(
@@ -45,24 +43,20 @@ async def run_detection(
         def detect_plates():
             results = model(
                 image, conf=settings.yolo_conf_threshold, verbose=False
-            )  # Thêm verbose=False
+            )
             detections = []
 
-            # Duyệt qua kết quả một cách an toàn hơn
             if results:
                 for result in results:
-                    if result.boxes:  # Kiểm tra xem có boxes không
+                    if result.boxes:
                         for box in result.boxes:
-                            # Lấy tọa độ xyxy (luôn là list 1 phần tử)
                             xyxy_list = box.xyxy.tolist()
-                            # Lấy confidence (luôn là list 1 phần tử)
                             conf_list = box.conf.tolist()
 
                             if xyxy_list and conf_list:
                                 x1, y1, x2, y2 = map(int, xyxy_list[0])
                                 conf = float(conf_list[0])
 
-                                # Kiểm tra bbox hợp lệ
                                 if x1 < x2 and y1 < y2:
                                     detections.append(([x1, y1, x2, y2], conf))
                                 else:

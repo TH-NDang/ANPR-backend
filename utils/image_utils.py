@@ -19,11 +19,9 @@ def download_image_from_url(url: str) -> Optional[np.ndarray]:
     """
     try:
         response = requests.get(url, timeout=10)
-        response.raise_for_status()  # Kiểm tra lỗi HTTP
+        response.raise_for_status()
 
-        # Chuyển bytes thành ảnh numpy
         image = decode_image(response.content)
-
         if image is None:
             logger.error(f"Không thể decode dữ liệu ảnh từ URL: {url}")
             return None
@@ -36,17 +34,21 @@ def download_image_from_url(url: str) -> Optional[np.ndarray]:
         logger.error(f"Lỗi không xác định khi xử lý ảnh từ URL {url}: {e}")
         return None
 
+
 def decode_image(contents: bytes) -> Optional[np.ndarray]:
     """Đọc dữ liệu byte của ảnh và chuyển thành mảng numpy."""
     try:
         nparr = np.frombuffer(contents, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if img is None:
-            raise ValueError("Không thể decode ảnh. Định dạng không hợp lệ hoặc file bị lỗi.")
+            raise ValueError(
+                "Không thể decode ảnh. Định dạng không hợp lệ hoặc file bị lỗi."
+            )
         return img
     except Exception as e:
         logger.error(f"Lỗi khi decode ảnh: {e}")
         return None
+
 
 def encode_image_to_base64(image: np.ndarray) -> Optional[str]:
     """Mã hóa ảnh numpy array thành chuỗi base64 Data URL."""
@@ -54,16 +56,15 @@ def encode_image_to_base64(image: np.ndarray) -> Optional[str]:
         if image is None or image.size == 0:
             logger.warning("Ảnh đầu vào để encode là None hoặc trống.")
             return None
-        # Đảm bảo ảnh là BGR 3 kênh
         if len(image.shape) == 2:
             image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
         elif image.shape[2] == 4:
             image = cv2.cvtColor(image, cv2.COLOR_RGBA2BGR)
 
-        success, buffer = cv2.imencode('.jpg', image)
+        success, buffer = cv2.imencode(".jpg", image)
         if not success:
             raise ValueError("Không thể encode ảnh sang JPG.")
-        encoded_string = base64.b64encode(buffer).decode('utf-8')
+        encoded_string = base64.b64encode(buffer).decode("utf-8")
         return f"data:image/jpeg;base64,{encoded_string}"
     except Exception as e:
         logger.error(f"Lỗi khi encode ảnh sang base64: {e}")
@@ -83,12 +84,11 @@ def apply_unsharp_mask(image: np.ndarray, kernel_size=(5, 5), sigma=1.0, amount=
 
 def auto_canny(image: np.ndarray, sigma=0.33):
     """Tự động chọn ngưỡng tối ưu cho Canny edge detection."""
-    # Tính giá trị trung bình và trung vị của ảnh
     v = np.median(image)
-    # Áp dụng công thức Canny tự động ngưỡng
     lower = int(max(0, (1.0 - sigma) * v))
     upper = int(min(255, (1.0 + sigma) * v))
     return cv2.Canny(image, lower, upper)
+
 
 def deskew(image: np.ndarray) -> np.ndarray:
     """Chỉnh sửa góc nghiêng của ảnh biển số."""
@@ -96,25 +96,25 @@ def deskew(image: np.ndarray) -> np.ndarray:
         # Tìm các cạnh trong ảnh
         edges = auto_canny(image)
 
-        # Tìm các đường thẳng bằng Hough transform
-        lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=100, minLineLength=100, maxLineGap=10)
+        lines = cv2.HoughLinesP(
+            edges, 1, np.pi / 180, threshold=100, minLineLength=100, maxLineGap=10
+        )
 
         if lines is None or len(lines) == 0:
-            return image  # Không tìm thấy đường thẳng nào
+            return image
 
         # Tính góc nghiêng trung bình
         angles = []
         for line in lines:
             x1, y1, x2, y2 = line[0]
-            if x2 - x1 == 0:  # Tránh chia cho 0
+            if x2 - x1 == 0:
                 continue
             angle = np.arctan2(y2 - y1, x2 - x1) * 180 / np.pi
-            # Chỉ quan tâm đến các đường gần như ngang
             if abs(angle) < 45:
                 angles.append(angle)
 
         if not angles:
-            return image  # Không tìm thấy góc nghiêng phù hợp
+            return image
 
         # Tính góc nghiêng trung bình
         angle = np.median(angles)
@@ -127,7 +127,9 @@ def deskew(image: np.ndarray) -> np.ndarray:
         M = cv2.getRotationMatrix2D(center, angle, 1.0)
 
         # Áp dụng xoay cho ảnh
-        rotated = cv2.warpAffine(image, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+        rotated = cv2.warpAffine(
+            image, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE
+        )
 
         return rotated
     except Exception as e:
@@ -259,16 +261,16 @@ def draw_detections(image: np.ndarray, detections: List) -> np.ndarray:
     """Vẽ các hộp giới hạn và thông tin lên ảnh."""
     output_image = image.copy()
     if len(output_image.shape) == 2:
-            output_image = cv2.cvtColor(output_image, cv2.COLOR_GRAY2BGR)
+        output_image = cv2.cvtColor(output_image, cv2.COLOR_GRAY2BGR)
     elif output_image.shape[2] == 4:
-            output_image = cv2.cvtColor(output_image, cv2.COLOR_RGBA2BGR)
+        output_image = cv2.cvtColor(output_image, cv2.COLOR_RGBA2BGR)
 
     for det in detections:
         x1, y1, x2, y2 = det.bounding_box
         text = det.plate_number
-        color = (0, 0, 255) # Màu đỏ cho lỗi/không đọc được
+        color = (0, 0, 255)  # Màu đỏ cho lỗi/không đọc được
         if det.plate_analysis and det.plate_analysis.is_valid_format:
-             color = (0, 255, 0) # Màu xanh lá cho biển hợp lệ
+            color = (0, 255, 0)  # Màu xanh lá cho biển hợp lệ
 
         # Vẽ hộp
         cv2.rectangle(output_image, (x1, y1), (x2, y2), color, 2)
@@ -276,33 +278,47 @@ def draw_detections(image: np.ndarray, detections: List) -> np.ndarray:
         # Chuẩn bị text để hiển thị
         label = f"{text}"
         if det.plate_analysis:
-            label += f" ({det.plate_analysis.plate_type})" # Thêm loại biển nếu có
-        # if det.confidence_ocr:
-        #     label += f" OCR:{det.confidence_ocr:.2f}"
+            label += f" ({det.plate_analysis.plate_type})"
 
         # Tính toán vị trí đặt text
-        (text_width, text_height), baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
+        (text_width, text_height), baseline = cv2.getTextSize(
+            label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1
+        )
         text_y = y1 - 10 if y1 - 10 > text_height else y1 + text_height + 10
 
         # Vẽ nền cho text
-        cv2.rectangle(output_image, (x1, text_y - text_height - baseline), (x1 + text_width, text_y + baseline), color, -1)
+        cv2.rectangle(
+            output_image,
+            (x1, text_y - text_height - baseline),
+            (x1 + text_width, text_y + baseline),
+            color,
+            -1,
+        )
         # Vẽ text
-        cv2.putText(output_image, label, (x1, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, cv2.LINE_AA)
+        cv2.putText(
+            output_image,
+            label,
+            (x1, text_y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (255, 255, 255),
+            1,
+            cv2.LINE_AA,
+        )
 
     return output_image
 
+
 def get_plate_color(plate_image: np.ndarray) -> str:
     """Xác định màu nền chủ đạo của ảnh biển số."""
-    if plate_image is None or plate_image.size < 100: # Cần đủ pixel để xác định màu
+    if plate_image is None or plate_image.size < 100:
         return "unknown"
 
     try:
         # Chuyển sang HSV
         hsv_image = cv2.cvtColor(plate_image, cv2.COLOR_BGR2HSV)
 
-        # Giảm nhiễu màu bằng cách làm mờ nhẹ
         hsv_image = cv2.medianBlur(hsv_image, 5)
-
         max_pixels = 0
         detected_color = "unknown"
 
@@ -312,34 +328,24 @@ def get_plate_color(plate_image: np.ndarray) -> str:
 
             # Tạo mask
             mask = cv2.inRange(hsv_image, lower_np, upper_np)
-
-            # Đếm số pixel khớp màu (loại bỏ viền đen nếu có)
-            # Có thể cần logic phức tạp hơn để chỉ xét vùng trung tâm
             num_pixels = cv2.countNonZero(mask)
 
-            # Xử lý màu đỏ (có 2 dải)
             if color_name.startswith("red"):
                 current_red_pixels = num_pixels
-                # Nếu đã có màu đỏ trước đó, cộng dồn
                 if detected_color == "red":
-                    num_pixels += max_pixels # Cộng dồn pixel từ dải đỏ trước
-                color_name = "red" # Chuẩn hóa tên màu
+                    num_pixels += max_pixels
+                color_name = "red"
 
             if num_pixels > max_pixels:
                 max_pixels = num_pixels
-                # Nếu là màu đỏ, giữ lại số pixel của dải hiện tại để cộng dồn nếu cần
                 if color_name == "red":
-                     max_pixels = current_red_pixels # Chỉ lưu pixel của dải này để cộng với dải đỏ kia
+                    max_pixels = current_red_pixels
                 detected_color = color_name
 
-
-        # Thêm một ngưỡng tối thiểu để coi là màu hợp lệ
         total_pixels = plate_image.shape[0] * plate_image.shape[1]
-        if max_pixels < total_pixels * 0.1: # Ít nhất 10% diện tích khớp màu
-            logger.debug(f"Không đủ pixel khớp màu rõ ràng (max: {max_pixels}/{total_pixels}).")
+        if max_pixels < total_pixels * 0.1:
             return "unknown"
 
-        logger.debug(f"Màu biển số được phát hiện: {detected_color} ({max_pixels} pixels)")
         return detected_color
 
     except Exception as e:
