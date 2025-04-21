@@ -5,9 +5,8 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import cv2
 import logging
-import time  # Import time module
+import time
 
-# Import config và schemas
 from config import settings
 from schemas import (
     ProcessImageResponse,

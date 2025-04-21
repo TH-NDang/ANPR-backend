@@ -70,7 +70,10 @@ def encode_image_to_base64(image: np.ndarray) -> Optional[str]:
         logger.error(f"Lỗi khi encode ảnh sang base64: {e}")
         return None
 
-def apply_unsharp_mask(image: np.ndarray, kernel_size=(5, 5), sigma=1.0, amount=1.0, threshold=0):
+
+def apply_unsharp_mask(
+    image: np.ndarray, kernel_size=(5, 5), sigma=1.0, amount=1.0, threshold=0
+):
     """Áp dụng unsharp mask filter để tăng độ sắc nét của ảnh."""
     blurred = cv2.GaussianBlur(image, kernel_size, sigma)
     sharpened = float(amount + 1) * image - float(amount) * blurred
@@ -81,6 +84,7 @@ def apply_unsharp_mask(image: np.ndarray, kernel_size=(5, 5), sigma=1.0, amount=
         low_contrast_mask = np.absolute(image - blurred) < threshold
         np.copyto(sharpened, image, where=low_contrast_mask)
     return sharpened
+
 
 def auto_canny(image: np.ndarray, sigma=0.33):
     """Tự động chọn ngưỡng tối ưu cho Canny edge detection."""
@@ -136,6 +140,7 @@ def deskew(image: np.ndarray) -> np.ndarray:
         logger.warning(f"Lỗi khi deskew ảnh: {e}")
         return image  # Trả về ảnh gốc nếu có lỗi
 
+
 def try_multiple_thresholds(gray_image: np.ndarray) -> List[np.ndarray]:
     """Thử nghiệm nhiều phương pháp threshold khác nhau và trả về danh sách kết quả."""
     results = []
@@ -150,15 +155,13 @@ def try_multiple_thresholds(gray_image: np.ndarray) -> List[np.ndarray]:
 
     # 3. Adaptive Gaussian Threshold - normal
     adaptive1 = cv2.adaptiveThreshold(
-        gray_image, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-        cv2.THRESH_BINARY, 11, 2
+        gray_image, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
     )
     results.append(adaptive1)
 
     # 4. Adaptive Gaussian Threshold - inverted
     adaptive2 = cv2.adaptiveThreshold(
-        gray_image, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-        cv2.THRESH_BINARY_INV, 11, 2
+        gray_image, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2
     )
     results.append(adaptive2)
 
@@ -167,6 +170,7 @@ def try_multiple_thresholds(gray_image: np.ndarray) -> List[np.ndarray]:
     results.append(inverted)
 
     return results
+
 
 def preprocess_plate_for_ocr(plate_image: np.ndarray) -> np.ndarray:
     """
@@ -191,7 +195,11 @@ def preprocess_plate_for_ocr(plate_image: np.ndarray) -> np.ndarray:
         h, w = original.shape[:2]
         if h < min_height:
             scale = min_height / h
-            resized = cv2.resize(original, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_CUBIC)
+            resized = cv2.resize(
+                original,
+                (int(w * scale), int(h * scale)),
+                interpolation=cv2.INTER_CUBIC,
+            )
         else:
             resized = original.copy()
 
@@ -214,48 +222,50 @@ def preprocess_plate_for_ocr(plate_image: np.ndarray) -> np.ndarray:
         # Áp dụng kỹ thuật deskew cho từng phiên bản
         deskewed_versions = [deskew(img) for img in threshold_versions]
         processed_versions.extend(deskewed_versions)
-        
+
         # Áp dụng morphology để làm rõ ký tự
         kernel = np.ones((3, 3), np.uint8)
         for img in threshold_versions:
             # Erosion để làm mỏng các ký tự
             erosion = cv2.erode(img, kernel, iterations=1)
             processed_versions.append(erosion)
-            
+
             # Dilation để làm dày các ký tự
             dilation = cv2.dilate(img, kernel, iterations=1)
             processed_versions.append(dilation)
-        
+
         # Chọn phương pháp ban đầu của chúng ta với binary threshold
         binary_threshold = cv2.adaptiveThreshold(
-            contrast_enhanced, 255,
+            contrast_enhanced,
+            255,
             cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
             cv2.THRESH_BINARY_INV,
             settings.ocr_preprocess_thresh_block_size,
-            settings.ocr_preprocess_thresh_c
+            settings.ocr_preprocess_thresh_c,
         )
         processed_versions.append(binary_threshold)
-        
+
         # Thêm phiên bản tăng độ sắc nét
         sharpened = apply_unsharp_mask(contrast_enhanced)
         processed_versions.append(sharpened)
-        
+
         # Nếu số lượng phương pháp quá nhiều, hãy giảm bớt để tránh quá tải
         max_versions = 5
         if len(processed_versions) > max_versions:
             processed_versions = processed_versions[:max_versions]
-        
+
         logger.debug(f"Đã tạo {len(processed_versions)} phiên bản tiền xử lý khác nhau")
-        
+
         # Mặc định trả về phiên bản binary threshold (phiên bản 0)
         # PaddleOCR/OCR engine sẽ thử từng phiên bản để tìm ra kết quả tốt nhất
         # Trả về các phiên bản ảnh trong 1 tuple (để có thể lặp qua trong OCR)
         return processed_versions[0]
-        
+
     except Exception as e:
         logger.error(f"Lỗi trong quá trình tiền xử lý OCR: {e}")
         # Trả về ảnh gốc nếu có lỗi
         return cv2.cvtColor(original, cv2.COLOR_BGR2GRAY)
+
 
 def draw_detections(image: np.ndarray, detections: List) -> np.ndarray:
     """Vẽ các hộp giới hạn và thông tin lên ảnh."""
@@ -350,4 +360,4 @@ def get_plate_color(plate_image: np.ndarray) -> str:
 
     except Exception as e:
         logger.error(f"Lỗi khi xác định màu biển số: {e}")
-        return "unknown" 
+        return "unknown"

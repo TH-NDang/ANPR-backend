@@ -35,13 +35,16 @@ class Settings(BaseSettings):
     api_port: int = int(os.getenv("API_PORT", 5000))
     log_level: str = os.getenv("LOG_LEVEL", "info")
 
-    # --- OpenAI/Gemini Settings (Keep .env priority for keys and models) ---
+    # --- OpenAI/Gemini Settings
     openai_api_key: Optional[str] = os.getenv("OPENAI_API_KEY")
     openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     enable_openai_fallback: bool = True
 
     gemini_api_key: Optional[str] = os.getenv("GEMINI_API_KEY")
-    gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+    gemini_model: str = os.getenv(
+        "GEMINI_MODEL", "gemini-1.5-flash"
+    )
+    enable_gemini_fallback: bool = True
 
     # --- Torch settings ---
     torch_weights_only: bool = False
@@ -85,4 +88,5 @@ logger.info(f"OpenAI API Key Provided: {'Yes' if settings.openai_api_key else 'N
 logger.info(f"OpenAI Model: {settings.openai_model}")
 logger.info(f"OpenAI Fallback Enabled: {settings.enable_openai_fallback}")
 logger.info(f"Gemini API Key Provided: {'Yes' if settings.gemini_api_key else 'No'}")
-logger.info(f"Gemini Model: {settings.gemini_model}")
+logger.info(f"Gemini Model (Fallback): {settings.gemini_model}")
+logger.info(f"Gemini Fallback Enabled: {settings.enable_gemini_fallback}")
