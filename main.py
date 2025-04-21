@@ -44,6 +44,7 @@ app.add_middleware(
 
 executor = ThreadPoolExecutor()
 
+
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     return JSONResponse(
@@ -217,7 +218,7 @@ async def process_image_url_endpoint(request: ImageUrlRequest):
     """
     start_time = time.perf_counter()  # Start timer for the endpoint
     try:
-        image_np = await download_image_from_url(str(request.url))
+        image_np = download_image_from_url(str(request.url))
     except Exception as e:
         raise HTTPException(
             status_code=422, detail=f"Failed to process image from URL: {e}"
