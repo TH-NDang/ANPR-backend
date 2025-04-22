@@ -97,15 +97,12 @@ async def _run_paddle_ocr(plate_crop: np.ndarray, executor: ThreadPoolExecutor) 
 async def _run_openai_ocr(
     plate_crop: np.ndarray,
     executor: ThreadPoolExecutor,
-    full_image: Optional[np.ndarray] = None,
-    bbox: Optional[Tuple[int, int, int, int]] = None,
 ) -> str:
-    """Thực hiện OpenAI OCR trong executor, ưu tiên full_image nếu được cung cấp."""
+    """Thực hiện OpenAI OCR trong executor."""
     if openai_client is None:
         return ""
 
-    image_to_encode = full_image if full_image is not None else plate_crop
-    if image_to_encode is None or image_to_encode.size == 0:
+    if plate_crop is None or plate_crop.size == 0:
         return ""
 
     loop = asyncio.get_running_loop()
@@ -115,21 +112,13 @@ async def _run_openai_ocr(
             _, buffer = cv2.imencode(".jpg", image_array)
             return base64.b64encode(buffer).decode("utf-8")
 
-        base64_image = await loop.run_in_executor(
-            executor, encode_image, image_to_encode
-        )
+        base64_image = await loop.run_in_executor(executor, encode_image, plate_crop)
 
         prompt = (
             "You are an expert OCR specialized in Vietnamese vehicle license plates. "
-            "Extract ONLY the license plate text from the image. "
+            "Extract ONLY the license plate text from the provided image, which is a close-up crop of the license plate. "
             "Focus on Vietnamese formats like XX-YZ.ZZZZ, XX-YZZ.ZZ, XXYZ.ZZZZZ, XX-Y ZZZ.ZZ. "
         )
-        if full_image is not None and bbox:
-            prompt += f"The approximate bounding box of the plate within the full image is [x1={bbox[0]}, y1={bbox[1]}, x2={bbox[2]}, y2={bbox[3]}]. Focus your analysis there. "
-        else:
-            prompt += (
-                "The provided image is likely a close-up crop of the license plate. "
-            )
 
         prompt += (
             "Respond only with the extracted text, no extra formatting or explanations. "
@@ -172,17 +161,14 @@ async def _run_openai_ocr(
 async def _run_gemini_ocr(
     plate_crop: np.ndarray,
     executor: ThreadPoolExecutor,
-    full_image: Optional[np.ndarray] = None,
-    bbox: Optional[Tuple[int, int, int, int]] = None,
 ) -> str:
-    """Thực hiện Gemini OCR trong executor, ưu tiên full_image nếu được cung cấp."""
+    """Thực hiện Gemini OCR trong executor."""
     if gemini_client is None:
         logger.warning(
             "Gemini client chưa khởi tạo, không thể chạy Gemini OCR fallback."
         )
         return ""
-    image_to_process = full_image if full_image is not None else plate_crop
-    if image_to_process is None or image_to_process.size == 0:
+    if plate_crop is None or plate_crop.size == 0:
         logger.warning("Ảnh đầu vào cho Gemini OCR là None hoặc trống.")
         return ""
     loop = asyncio.get_running_loop()
@@ -201,24 +187,17 @@ async def _run_gemini_ocr(
                 return None
 
         image_bytes = await loop.run_in_executor(
-            executor, encode_image_for_gemini, image_to_process
+            executor, encode_image_for_gemini, plate_crop
         )
         if not image_bytes:
             return ""
         image_part = {"mime_type": "image/jpeg", "data": image_bytes}
         prompt_parts = [
             "You are an expert OCR specialized in Vietnamese vehicle license plates. ",
-            "Extract ONLY the license plate text from the image. ",
+            "Extract ONLY the license plate text from the provided image, which is a close-up crop of the license plate. ",
             "Focus on Vietnamese formats like XX-YZ.ZZZZ, XX-YZZ.ZZ, XXYZ.ZZZZZ, XX-Y ZZZ.ZZ etc. ",
         ]
-        if full_image is not None and bbox:
-            prompt_parts.append(
-                f"The approximate bounding box of the plate within the full image is [x1={bbox[0]}, y1={bbox[1]}, x2={bbox[2]}, y2={bbox[3]}]. Focus your analysis there. "
-            )
-        else:
-            prompt_parts.append(
-                "The provided image is likely a close-up crop of the license plate. "
-            )
+
         prompt_parts.extend(
             [
                 "Respond only with the extracted text, no extra formatting or explanations. ",
@@ -257,8 +236,6 @@ def _is_potentially_valid(ocr_text: str) -> bool:
 async def get_ocr_result(
     plate_crop: np.ndarray,
     executor: ThreadPoolExecutor,
-    full_image: Optional[np.ndarray] = None,
-    bbox: Optional[Tuple[int, int, int, int]] = None,
 ) -> Tuple[str, str]:
     """
     Lấy kết quả OCR tốt nhất, xử lý fallback nếu cần.
@@ -266,8 +243,6 @@ async def get_ocr_result(
     Args:
         plate_crop: The cropped image of the license plate.
         executor: ThreadPoolExecutor for running tasks.
-        full_image: The original full image (optional, used for OpenAI fallback).
-        bbox: The bounding box coordinates on the full_image (optional).
 
     Returns:
         A tuple containing the final OCR text and the engine used ('paddleocr' or 'gemini').
@@ -282,9 +257,7 @@ async def get_ocr_result(
     )
     if should_fallback:
         try:
-            gemini_ocr_text = await _run_gemini_ocr(
-                plate_crop, executor, full_image=full_image, bbox=bbox
-            )
+            gemini_ocr_text = await _run_gemini_ocr(plate_crop, executor)
             return gemini_ocr_text, "gemini"
         except Exception as e:
             logger.error(f"Lỗi khi gọi Gemini API: {e}", exc_info=True)
