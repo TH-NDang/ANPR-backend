@@ -108,9 +108,7 @@ async def process_image_for_detection(
                 continue
 
             # 3. Get OCR result
-            final_ocr_text, engine_used = await get_ocr_result(
-                plate_crop, executor, full_image=image_np, bbox=bbox
-            )
+            final_ocr_text, engine_used = await get_ocr_result(plate_crop, executor)
 
             # 4. Analyze final OCR result
             try:
